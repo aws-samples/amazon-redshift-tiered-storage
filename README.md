@@ -142,6 +142,7 @@ VendorID,lpep_pickup_datetime,Lpep_dropoff_datetime,Store_and_fwd_flag,RateCodeI
 
 	![GitHub Logo](/images/jan_file_head.png)
 	
+	
 ### Build you DDL 
 - Create a schema `workshop_das` and table `workshop_das.green_201601_csv` for tables that will reside on the Redshift compute nodes, AKA the Redshift direct-attached storage (DAS) tables.
 
@@ -249,12 +250,10 @@ $ aws s3 ls s3://us-west-2.serverless-analytics/canonical/NY-Pub/
                            PRE year=2014/
                            PRE year=2015/
                            PRE year=2016/
-
-$ aws s3 ls s3://us-west-2.serverless-analytics/canonical/NY-Pub/year=2016/month=1/
+$ aws s3 ls s3://us-west-2.serverless-analytics/canonical/NY-Pub/year=2016/month=1/
                            PRE type=fhv/
                            PRE type=green/
                            PRE type=yellow/
-
 $ aws s3 ls s3://us-west-2.serverless-analytics/canonical/NY-Pub/year=2016/month=1/type=green/
 2017-05-18 19:43:22   18910771 part-r-00000-4c01b1ef-3419-40ba-908e-5b36b3556fa7.gz.parquet
 ````
@@ -573,13 +572,14 @@ XN Merge  (cost=1000075000042.52..1000075000042.52 rows=1 width=30)
 
 ![GitHub Logo](/images/table_pop_strat.png)
 
+
 * Anticipating that we’ll want to ”age-off” the oldest quarter on a 3 month basis, architect your DAS table to make this easy to maintain and query.
 
 * How about something like this:
 
-	````
+	<pre><code>
 	CREATE OR REPLACE VIEW ant321_view_NYTaxiRides AS
-   SELECT * FROM workshop_das.taxi_201504 /* Note how these are business quarters */
+   SELECT * FROM workshop_das.taxi_201504 <b>Note how these are business quarters</b>
 UNION ALL 
   SELECT * FROM workshop_das.taxi_201601
 UNION ALL 
@@ -591,19 +591,17 @@ UNION ALL
 UNION ALL 
   SELECT * FROM ant321.NYTaxiRides
 WITH NO SCHEMA BINDING;
-
-	````
+	</code></pre>
 	
 * Or something like this? Bulk DELETE-s in Redshift are actually quite fast (with one-time single-digit minute time to VACUUM), so this is also a valid configuration as well:
 
-	````
+	<pre><code>
 	CREATE OR REPLACE VIEW ant321_view_NYTaxiRides AS
    SELECT * FROM workshop_das.taxi_current
 UNION ALL 
   SELECT * FROM ant321.NYTaxiRides
 WITH NO SCHEMA BINDING;
-
-	````
+	</code></pre>
 	
 * Don’t forget a quick ANALYZE and VACUUM after completing either version.
 
@@ -631,8 +629,7 @@ WITH NO SCHEMA BINDING;
 	- Start Green loop.
 	- Q4 2015.
 
-
-	````	
+	<pre><code>	
 	COPY workshop_das.taxi_loader FROM 's3://us-west-2.serverless-analytics/canonical/NY-Pub/year=2015/month=10/type=green' IAM_ROLE 'arn:aws:iam::XXXXXXXXXXXX:role/mySpectrumRole' FORMAT AS PARQUET;
 COPY workshop_das.taxi_loader FROM 's3://us-west-2.serverless-analytics/canonical/NY-Pub/year=2015/month=11/type=green' IAM_ROLE 'arn:aws:iam::XXXXXXXXXXXX:role/mySpectrumRole' FORMAT AS PARQUET;
 COPY workshop_das.taxi_loader FROM 's3://us-west-2.serverless-analytics/canonical/NY-Pub/year=2015/month=12/type=green' IAM_ROLE 'arn:aws:iam::XXXXXXXXXXXX:role/mySpectrumRole' FORMAT AS PARQUET;
@@ -649,31 +646,28 @@ COPY workshop_das.taxi_loader FROM 's3://us-west-2.serverless-analytics/canonica
 COPY workshop_das.taxi_loader FROM 's3://us-west-2.serverless-analytics/canonical/NY-Pub/year=2016/month=10/type=green' IAM_ROLE 'arn:aws:iam::XXXXXXXXXXXX:role/mySpectrumRole' FORMAT AS PARQUET;
 COPY workshop_das.taxi_loader FROM 's3://us-west-2.serverless-analytics/canonical/NY-Pub/year=2016/month=11/type=green' IAM_ROLE 'arn:aws:iam::XXXXXXXXXXXX:role/mySpectrumRole' FORMAT AS PARQUET;
 COPY workshop_das.taxi_loader FROM 's3://us-west-2.serverless-analytics/canonical/NY-Pub/year=2016/month=12/type=green' IAM_ROLE 'arn:aws:iam::XXXXXXXXXXXX:role/mySpectrumRole' FORMAT AS PARQUET;
-	````
+	</code></pre>
 
-	````
+	<pre><code>
 	INSERT INTO workshop_das.taxi_current SELECT *, DATE_PART(year,pickup_datetime), DATE_PART(month,pickup_datetime), 'green' FROM workshop_das.taxi_loader;
 	
 	TRUNCATE workshop_das.taxi_loader;
+	</code></pre>
 
-	````
-
-	- Similarly, start Yellow loop.
+- Similarly, start Yellow loop.
 
 ### Redshift Spectrum can, of course, also be used to populate the table(s).
 
-````
+<pre><code>
 INSERT INTO  workshop_das.taxi_201601    SELECT * FROM ant321.NYTaxiRides WHERE year = 2016 AND month IN (2,3); /* Need to complete the first quarter of 2016.*/
 CREATE TABLE workshop_das.taxi_201602 AS SELECT * FROM ant321.NYTaxiRides WHERE year = 2016 AND month IN (4,5,6);
 CREATE TABLE workshop_das.taxi_201603 AS SELECT * FROM ant321.NYTaxiRides WHERE year = 2016 AND month IN (7,8,9);
 CREATE TABLE workshop_das.taxi_201604 AS SELECT * FROM ant321.NYTaxiRides WHERE year = 2016 AND month IN (10,11,12);
-
-
-````
+</code></pre>
 
 ### Adjust your Redshift Spectrum table to exclude the Q4 2015 data
 
-````
+<pre><code>
 WITH generate_smallint_series AS (select row_number() over () as n from workshop_das.green_201601_csv limit 65536)
 , part_years AS (select n AS year_num from generate_smallint_series where n between 2015 and 2016)
 , part_months AS (select n AS month_num from generate_smallint_series where n between 1 and 12)
@@ -729,10 +723,10 @@ ALTER TABLE ant321.NYTaxiRides DROP PARTITION(year=2016, month=11, type='green')
 ALTER TABLE ant321.NYTaxiRides DROP PARTITION(year=2016, month=12, type='yellow');
 ALTER TABLE ant321.NYTaxiRides DROP PARTITION(year=2016, month=12, type='fhv');
 ALTER TABLE ant321.NYTaxiRides DROP PARTITION(year=2016, month=12, type='green');
-
-````
+</code></pre>
 
 * Now, regardless of method, there’s a view covering the trailing 5 quarters in Redshift DAS, and all of time on Redshift Spectrum, completely transparent to users of the view. What would be the steps to “age-off” the Q4 2015 data?
+
 * Put a copy of the data from Redshift DAS table to S3. Listen closely this week for a possible announcement around this step! What would be the command(s)?
 	* UNLOAD to Parquet.
 * Extend the Redshift Spectrum table to cover the Q4 2015 data with Redshift Spectrum.
