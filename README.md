@@ -127,20 +127,27 @@ Amazon Redshift combines two usage patterns under a single, seamless service:
 * Load the Green company data for January 2016 into Redshift direct-attached storage (DAS) with COPY.
 * Collect supporting/refuting evidence for the impact of the January, 2016 blizzard on taxi usage.
 * The CSV data is by month on Amazon S3. Here's a quick screenshot via the CLI: 
-	````
-	$ aws s3 ls s3://us-west-2.serverless-analytics/NYC-Pub/green/ | grep 2016
-	````
+
+````
+
+$ aws s3 ls s3://us-west-2.serverless-analytics/NYC-Pub/green/ | grep 2016
+
+````
 	
-	![GitHub Logo](/images/s3_ls.png)
+``![GitHub Logo](/images/s3_ls.png)
 
 * Here's Sample data from the January File:
 
-	````
-	head -20 green_tripdata_2016-01.csv 
-VendorID,lpep_pickup_datetime,Lpep_dropoff_datetime,Store_and_fwd_flag,RateCodeID,Pickup_longitude,Pickup_latitude,Dropoff_longitude,Dropoff_latitude,Passenger_count,Trip_distance,Fare_amount,Extra,MTA_tax,Tip_amount,Tolls_amount,Ehail_fee,improvement_surcharge,Total_amount,Payment_type,Trip_type 
-	````
 
-	![GitHub Logo](/images/jan_file_head.png)
+````
+
+head -20 green_tripdata_2016-01.csv
+
+VendorID,lpep_pickup_datetime,Lpep_dropoff_datetime,Store_and_fwd_flag,RateCodeID,Pickup_longitude,Pickup_latitude,Dropoff_longitude,Dropoff_latitude,Passenger_count,Trip_distance,Fare_amount,Extra,MTA_tax,Tip_amount,Tolls_amount,Ehail_fee,improvement_surcharge,Total_amount,Payment_type,Trip_type
+
+````
+
+![GitHub Logo](/images/jan_file_head.png)
 	
 	
 ### Build you DDL 
