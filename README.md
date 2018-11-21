@@ -107,6 +107,13 @@ Amazon Redshift combines two usage patterns under a single, seamless service:
 	````
 	https://github.com/sosedoff/pgweb/releases
 	````
+	
+	* PgWeb defaults to port 5432, whereas Redshift defaults to 5439. If you want to change the port in PGWeb to 5439, invoke with:
+	
+	```
+	pgweb --url postgres://{username}:{password}@{cluster_endpoint}:5439/{database_name}?sslmode=require
+	```
+	
 * (optional) Command Line Interface (CLI) for Amazon Redshift.
 	
 	````
@@ -178,7 +185,9 @@ VendorID,lpep_pickup_datetime,Lpep_dropoff_datetime,Store_and_fwd_flag,RateCodeI
 
 Build your copy command to copy the data from Amazon S3. This dataset has the number of taxi rides in the month of January 2016.
 
-	`s3://us-west-2.serverless-analytics/NYC-Pub/green/green_tripdata_2016-01.csv`
+````
+s3://us-west-2.serverless-analytics/NYC-Pub/green/green_tripdata_2016-01.csv
+````
 
 <details><summary>Hint</summary>
 <p>
@@ -208,14 +217,12 @@ In this month, there is a date which had the lowest number of taxi rides due to 
 ````
 SELECT TO_CHAR(pickup_datetime, 'YYYY-MM-DD'),
 COUNT(*)
-FROM workshop_das. green_201601_csv
+FROM workshop_das.green_201601_csv
 GROUP BY 1
 ORDER BY 1;
 ````
 </p>
 </details>
-
-> Matt S.: I didnt think adding the visualization here makes sense. maybe we will leave that in the PPT on the big screen ?? let me know your thoughts. 
 
 ## Workshop - Scenario #2: Go Back in Time
 
@@ -227,6 +234,8 @@ ORDER BY 1;
 * Introspect the historical data, perhaps rolling-up the data in novel ways to see trends over time, or other dimensions.
 * Enforce reasonable use of the cluster with Redshift Spectrum-specific Query Monitoring Rules (QMR).
 	* Test the QMR setup by writing an excessive-use query.
+* For the dimension table(s), feel free to leverage multi-row insert in Redshift:
+	`https://docs.aws.amazon.com/redshift/latest/dg/c_best-practices-multi-row-inserts.html`
 
 **Note the partitioning scheme is Year, Month, Type (where Type is a taxi company). Here's a quick Screenshot:**
 
@@ -331,6 +340,12 @@ Take a look at SVL_QUERY_METRICS_SUMMARY view shows the maximum values of metric
 https://docs.aws.amazon.com/redshift/latest/dg/r_SVL_QUERY_METRICS_SUMMARY.html
 ```
 
+Quick Note on QLM: The WLM configuration properties are either dynamic or static. Dynamic properties can be applied to the database without a cluster reboot, but static properties require a cluster reboot for changes to take effect. Additional info here:
+
+```
+https://docs.aws.amazon.com/redshift/latest/mgmt/workload-mgmt-config.html
+```
+
 ### [Advanced Topic] Debug a Parquet/Redshift Spectrum datatype mismatch
 
 1. Create a new Redshift Spectrum table, changing the datatype of column ‘trip_distance’ from FLOAT8 to FLOAT4. 
@@ -367,6 +382,21 @@ CREATE TABLE workshop_das.taxi_201601 AS SELECT * FROM ant321.NYTaxiRides WHERE 
 
 </p>
 </details>
+
+Note: What about column compression/encoding? Remember that on a CTAS, Amazon Redshift automatically assigns compression encoding as follows:
+
+* Columns that are defined as sort keys are assigned RAW compression.
+* Columns that are defined as BOOLEAN, REAL, or DOUBLE PRECISION data types are assigned RAW compression.
+* All other columns are assigned LZO compression.
+
+```
+https://docs.aws.amazon.com/redshift/latest/dg/r_CTAS_usage_notes.html 
+
+```
+Here's the ANALYZE COMPRESSION output in case you want to use it:
+
+![GitHub Logo](/images/analyze_compression.png)
+
 
 ### Complete populating the table 
 
@@ -422,15 +452,13 @@ WITH NO SCHEMA BINDING
 
 - Note the use of the partition columns in the SELECT and WHERE clauses. Where were those columns in your Spectrum table definition?
 - Note the filters being applied either at the partition or file levels in the Spectrum portion of the query (versus the Redshift DAS section).
-- Does the runtime surprise you? Why or why not?
+- If you actually run the query (and not just generate the explain plan), does the runtime surprise you? Why or why not?
 
-```
+<pre><code>
 EXPLAIN SELECT year, month, type, COUNT(*) FROM ant321_view_NYTaxiRides WHERE year = 2016 AND month IN (1) AND passenger_count = 4 GROUP BY 1,2,3 ORDER BY 1,2,3;
+</code></pre>
 
-```
-
-
-```
+<pre><code>
 QUERY PLAN 
 XN Merge  (cost=1000090025653.20..1000090025653.21 rows=2 width=48)
   Merge Key: derived_col1, derived_col2, derived_col3
@@ -444,18 +472,17 @@ XN Merge  (cost=1000090025653.20..1000090025653.21 rows=2 width=48)
                                 ->  XN Subquery Scan "*SELECT* 1"  (cost=25608.12..25608.13 rows=1 width=18)
                                       ->  XN HashAggregate  (cost=25608.12..25608.12 rows=1 width=18)
                                             ->  XN Seq Scan on t201601_pqt  (cost=0.00..25292.49 rows=31563 width=18)
-                                                  Filter: ((passenger_count = 4) AND ("month" = 1) AND ("year" = 2016))
+                                                  <b>Filter: ((passenger_count = 4) AND ("month" = 1) AND ("year" = 2016))</b>
                                 ->  XN Subquery Scan "*SELECT* 2"  (cost=90000045.00..90000045.02 rows=1 width=38)
                                       ->  XN HashAggregate  (cost=90000045.00..90000045.01 rows=1 width=38)
                                             ->  XN Partition Loop  (cost=90000000.00..90000035.00 rows=1000 width=38)
                                                   ->  XN Seq Scan PartitionInfo of ant321.nytaxirides  (cost=0.00..15.00 rows=1 width=30)
-                                                        Filter: (("month" = 1) AND ("year" = 2016))
+                                                       <b> Filter: (("month" = 1) AND ("year" = 2016))</b>
                                                   ->  XN S3 Query Scan nytaxirides  (cost=45000000.00..45000010.00 rows=1000 width=8)
                                                         ->  S3 Aggregate  (cost=45000000.00..45000000.00 rows=1000 width=0)
                                                               ->  S3 Seq Scan ant321.nytaxirides location:"s3://us-west-2.serverless-analytics/canonical/NY-Pub" format:PARQUET  (cost=0.00..37500000.00 rows=3000000000 width=0)
-                                                                    Filter: (passenger_count = 4)
-
-```
+                                                                  <b> Filter: (passenger_count = 4)</b>
+</code></pre>
 
 - Now include Spectrum data by adding a month whose data is in Spectrum
 
@@ -464,7 +491,7 @@ EXPLAIN SELECT year, month, type, COUNT(*) FROM ant321_view_NYTaxiRides WHERE ye
 
 ```
 
-```
+<pre><code>
 QUERY PLAN
 XN Merge  (cost=1000090029268.92..1000090029268.92 rows=2 width=48)
   Merge Key: derived_col1, derived_col2, derived_col3
@@ -478,79 +505,240 @@ XN Merge  (cost=1000090029268.92..1000090029268.92 rows=2 width=48)
                                 ->  XN Subquery Scan "*SELECT* 1"  (cost=29221.33..29221.34 rows=1 width=18)
                                       ->  XN HashAggregate  (cost=29221.33..29221.33 rows=1 width=18)
                                             ->  XN Seq Scan on t201601_pqt  (cost=0.00..28905.70 rows=31563 width=18)
-                                                  Filter: ((passenger_count = 4) AND ("year" = 2016) AND (("month" = 1) OR ("month" = 2)))
+                                                 <b> Filter: ((passenger_count = 4) AND ("year" = 2016) AND (("month" = 1) OR ("month" = 2))) </b>
                                 ->  XN Subquery Scan "*SELECT* 2"  (cost=90000047.50..90000047.52 rows=1 width=38)
                                       ->  XN HashAggregate  (cost=90000047.50..90000047.51 rows=1 width=38)
                                             ->  XN Partition Loop  (cost=90000000.00..90000037.50 rows=1000 width=38)
                                                   ->  XN Seq Scan PartitionInfo of ant321.nytaxirides  (cost=0.00..17.50 rows=1 width=30)
-                                                        Filter: (("year" = 2016) AND (("month" = 1) OR ("month" = 2)))
+                                                       <b> Filter: (("year" = 2016) AND (("month" = 1) OR ("month" = 2)))</b>
                                                   ->  XN S3 Query Scan nytaxirides  (cost=45000000.00..45000010.00 rows=1000 width=8)
                                                         ->  S3 Aggregate  (cost=45000000.00..45000000.00 rows=1000 width=0)
                                                               ->  S3 Seq Scan ant321.nytaxirides location:"s3://us-west-2.serverless-analytics/canonical/NY-Pub" format:PARQUET  (cost=0.00..37500000.00 rows=3000000000 width=0)
-                                                                    Filter: (passenger_count = 4)
+                                                                  <b> Filter: (passenger_count = 4)</b>
+</code></pre>
 
-```
+<pre><code>
+EXPLAIN SELECT <b>passenger_count</b>, COUNT(*) FROM ant321.NYTaxiRides WHERE year = 2016 AND month IN (1,2) GROUP BY 1 ORDER BY 1;
+</code></pre>
 
-```
-EXPLAIN SELECT passenger_count, COUNT(*) FROM ant321.NYTaxiRides WHERE year = 2016 AND month IN (1,2) GROUP BY 1 ORDER BY 1;
-
-```
-
-```
+<pre><code>
 QUERY PLAN
 XN Merge  (cost=1000090005026.64..1000090005027.14 rows=200 width=12)
-  Merge Key: nytaxirides.derived_col1
+  <b>Merge Key: nytaxirides.derived_col1</b>
   ->  XN Network  (cost=1000090005026.64..1000090005027.14 rows=200 width=12)
         Send to leader
         ->  XN Sort  (cost=1000090005026.64..1000090005027.14 rows=200 width=12)
-              Sort Key: nytaxirides.derived_col1
+              <b>Sort Key: nytaxirides.derived_col1</b>
               ->  XN HashAggregate  (cost=90005018.50..90005019.00 rows=200 width=12)
                     ->  XN Partition Loop  (cost=90000000.00..90004018.50 rows=200000 width=12)
                           ->  XN Seq Scan PartitionInfo of ant321.nytaxirides  (cost=0.00..17.50 rows=1 width=0)
-                                Filter: (("year" = 2016) AND (("month" = 1) OR ("month" = 2)))
+                               Filter: (("year" = 2016) AND (("month" = 1) OR ("month" = 2)))
                           ->  XN S3 Query Scan nytaxirides  (cost=45000000.00..45002000.50 rows=200000 width=12)
-                                ->  S3 HashAggregate  (cost=45000000.00..45000000.50 rows=200000 width=4)
+                                <b> ->  S3 HashAggregate  (cost=45000000.00..45000000.50 rows=200000 width=4)</b>
                                       ->  S3 Seq Scan ant321.nytaxirides location:"s3://us-west-2.serverless-analytics/canonical/NY-Pub" format:PARQUET  (cost=0.00..30000000.00 rows=3000000000 width=4)
+</code></pre>
 
-```
+<pre><code>
+EXPLAIN SELECT <b>type</b>, COUNT(*) FROM ant321.NYTaxiRides WHERE year = 2016 AND month IN (1,2) GROUP BY 1 ORDER BY 1 ;
+</code></pre>
 
-```
-EXPLAIN SELECT type, COUNT(*) FROM ant321.NYTaxiRides WHERE year = 2016 AND month IN (1,2) GROUP BY 1 ORDER BY 1 ;
-
-```
-
-```
+<pre><code>
 QUERY PLAN
 XN Merge  (cost=1000075000042.52..1000075000042.52 rows=1 width=30)
-  Merge Key: nytaxirides."type"
+  <b>Merge Key: nytaxirides."type"</b>
   ->  XN Network  (cost=1000075000042.52..1000075000042.52 rows=1 width=30)
         Send to leader
         ->  XN Sort  (cost=1000075000042.52..1000075000042.52 rows=1 width=30)
-              Sort Key: nytaxirides."type"
+              <b>Sort Key: nytaxirides."type"</b>
               ->  XN HashAggregate  (cost=75000042.50..75000042.51 rows=1 width=30)
                     ->  XN Partition Loop  (cost=75000000.00..75000037.50 rows=1000 width=30)
                           ->  XN Seq Scan PartitionInfo of ant321.nytaxirides  (cost=0.00..17.50 rows=1 width=22)
-                                Filter: (("year" = 2016) AND (("month" = 1) OR ("month" = 2)))
+                               Filter: (("year" = 2016) AND (("month" = 1) OR ("month" = 2)))
                           ->  XN S3 Query Scan nytaxirides  (cost=37500000.00..37500010.00 rows=1000 width=8)
-                                ->  S3 Aggregate  (cost=37500000.00..37500000.00 rows=1000 width=0)
+                              <b>  ->  S3 Aggregate  (cost=37500000.00..37500000.00 rows=1000 width=0)</b>
                                       ->  S3 Seq Scan ant321.nytaxirides location:"s3://us-west-2.serverless-analytics/canonical/NY-Pub" format:PARQUET  (cost=0.00..30000000.00 rows=3000000000 width=0)
-
-```
-
-## * Matt S.: Missing these 3 per slide 27
-* Examine the explain plan differences based on the filters used in a query.
-* Build a aggregate or roll-up table using the view to populate a Redshift DAS table. ETL options here.
-* Crawl and explore the aggregate table using Amazon QuickSight
+</code></pre>
 
 ## Workshop - Scenario #4: Plan for the Future
 
 * Allow for trailing 5 quarters reporting by adding the Q4 2015 data to Redshift DAS:
-	* Anticipating the we’ll want to ”age-off” the oldest quarter on a 3 month basis, architect your DAS table to make 	this easy to maintain and query.
+	* Anticipating the we’ll want to ”age-off” the oldest quarter on a 3 month basis, architect your DAS table to make this easy to maintain and query.
 	* Adjust your Redshift Spectrum table to exclude the Q4 2015 data.
 * Develop and execute a plan to move the Q4 2015 data to S3.
 	* What are the discrete steps to be performed?
 	* What extra-Redshift functionality must be leverage as of Monday, November 27, 2018?
 	* Simulating the extra-Redshift steps with the existing Parquet data, age-off the Q4 2015 data from Redshift DAS 	and perform any needed steps to maintain a single version of the truth.
 
+* Several options to accomplish the goal
 
-> Mark S.: Slide 35 and 36 look same. 
+![GitHub Logo](/images/table_pop_strat.png)
+
+* Anticipating that we’ll want to ”age-off” the oldest quarter on a 3 month basis, architect your DAS table to make this easy to maintain and query.
+
+* How about something like this:
+
+	````
+	CREATE OR REPLACE VIEW ant321_view_NYTaxiRides AS
+   SELECT * FROM workshop_das.taxi_201504 /* Note how these are business quarters */
+UNION ALL 
+  SELECT * FROM workshop_das.taxi_201601
+UNION ALL 
+  SELECT * FROM workshop_das.taxi_201602
+UNION ALL 
+  SELECT * FROM workshop_das.taxi_201603
+UNION ALL 
+  SELECT * FROM workshop_das.taxi_201604
+UNION ALL 
+  SELECT * FROM ant321.NYTaxiRides
+WITH NO SCHEMA BINDING;
+
+	````
+	
+* Or something like this? Bulk DELETE-s in Redshift are actually quite fast (with one-time single-digit minute time to VACUUM), so this is also a valid configuration as well:
+
+	````
+	CREATE OR REPLACE VIEW ant321_view_NYTaxiRides AS
+   SELECT * FROM workshop_das.taxi_current
+UNION ALL 
+  SELECT * FROM ant321.NYTaxiRides
+WITH NO SCHEMA BINDING;
+
+	````
+	
+* Don’t forget a quick ANALYZE and VACUUM after completing either version.
+
+* If needed, the Redshift DAS tables can also be populated from the Parquet data with COPY. Note: This will highlight a data design when we created the Parquet data
+
+**COPY with Parquet doesn’t currently include a way to specify the partition columns as sources to populate the target Redshift DAS table. The current expectation is that since there’s no overhead (performance-wise) and little cost in also storing the partition data as actual columns on S3, customers will store the partition column data as well.**
+
+* We’re going to show how to work with the scenario where this pattern wasn’t followed. Use the single table option for this example
+	
+	````
+	CREATE TABLE workshop_das.taxi_current DISTSTYLE EVEN SORTKEY(year, month, type) AS SELECT * FROM ant321.NYTaxiRides WHERE 1 = 0;
+
+	````
+
+* And, create a helper table that doesn't include the partition columns from the Redshift Spectrum table.
+
+	````
+	CREATE TABLE workshop_das.taxi_loader AS SELECT vendorid, pickup_datetime, dropoff_datetime, ratecode, passenger_count, trip_distance, fare_amount, total_amount, payment_type FROM workshop_das.taxi_current WHERE 1 = 0;
+
+	````
+
+### Parquet copy continued
+
+* The population could be scripted easily; there are also a few different patterns that could be followed, (this isn't the only one):
+	- Start Green loop.
+	- Q4 2015.
+
+
+	````	
+	COPY workshop_das.taxi_loader FROM 's3://us-west-2.serverless-analytics/canonical/NY-Pub/year=2015/month=10/type=green' IAM_ROLE 'arn:aws:iam::XXXXXXXXXXXX:role/mySpectrumRole' FORMAT AS PARQUET;
+COPY workshop_das.taxi_loader FROM 's3://us-west-2.serverless-analytics/canonical/NY-Pub/year=2015/month=11/type=green' IAM_ROLE 'arn:aws:iam::XXXXXXXXXXXX:role/mySpectrumRole' FORMAT AS PARQUET;
+COPY workshop_das.taxi_loader FROM 's3://us-west-2.serverless-analytics/canonical/NY-Pub/year=2015/month=12/type=green' IAM_ROLE 'arn:aws:iam::XXXXXXXXXXXX:role/mySpectrumRole' FORMAT AS PARQUET;
+-- All 2016:
+COPY workshop_das.taxi_loader FROM 's3://us-west-2.serverless-analytics/canonical/NY-Pub/year=2016/month=1/type=green' IAM_ROLE 'arn:aws:iam::XXXXXXXXXXXX:role/mySpectrumRole' FORMAT AS PARQUET;
+COPY workshop_das.taxi_loader FROM 's3://us-west-2.serverless-analytics/canonical/NY-Pub/year=2016/month=2/type=green' IAM_ROLE 'arn:aws:iam::XXXXXXXXXXXX:role/mySpectrumRole' FORMAT AS PARQUET;
+COPY workshop_das.taxi_loader FROM 's3://us-west-2.serverless-analytics/canonical/NY-Pub/year=2016/month=3/type=green' IAM_ROLE 'arn:aws:iam::XXXXXXXXXXXX:role/mySpectrumRole' FORMAT AS PARQUET;
+COPY workshop_das.taxi_loader FROM 's3://us-west-2.serverless-analytics/canonical/NY-Pub/year=2016/month=4/type=green' IAM_ROLE 'arn:aws:iam::XXXXXXXXXXXX:role/mySpectrumRole' FORMAT AS PARQUET;
+COPY workshop_das.taxi_loader FROM 's3://us-west-2.serverless-analytics/canonical/NY-Pub/year=2016/month=5/type=green' IAM_ROLE 'arn:aws:iam::XXXXXXXXXXXX:role/mySpectrumRole' FORMAT AS PARQUET;
+COPY workshop_das.taxi_loader FROM 's3://us-west-2.serverless-analytics/canonical/NY-Pub/year=2016/month=6/type=green' IAM_ROLE 'arn:aws:iam::XXXXXXXXXXXX:role/mySpectrumRole' FORMAT AS PARQUET;
+COPY workshop_das.taxi_loader FROM 's3://us-west-2.serverless-analytics/canonical/NY-Pub/year=2016/month=7/type=green' IAM_ROLE 'arn:aws:iam::XXXXXXXXXXXX:role/mySpectrumRole' FORMAT AS PARQUET;
+COPY workshop_das.taxi_loader FROM 's3://us-west-2.serverless-analytics/canonical/NY-Pub/year=2016/month=8/type=green' IAM_ROLE 'arn:aws:iam::XXXXXXXXXXXX:role/mySpectrumRole' FORMAT AS PARQUET;
+COPY workshop_das.taxi_loader FROM 's3://us-west-2.serverless-analytics/canonical/NY-Pub/year=2016/month=9/type=green' IAM_ROLE 'arn:aws:iam::XXXXXXXXXXXX:role/mySpectrumRole' FORMAT AS PARQUET;
+COPY workshop_das.taxi_loader FROM 's3://us-west-2.serverless-analytics/canonical/NY-Pub/year=2016/month=10/type=green' IAM_ROLE 'arn:aws:iam::XXXXXXXXXXXX:role/mySpectrumRole' FORMAT AS PARQUET;
+COPY workshop_das.taxi_loader FROM 's3://us-west-2.serverless-analytics/canonical/NY-Pub/year=2016/month=11/type=green' IAM_ROLE 'arn:aws:iam::XXXXXXXXXXXX:role/mySpectrumRole' FORMAT AS PARQUET;
+COPY workshop_das.taxi_loader FROM 's3://us-west-2.serverless-analytics/canonical/NY-Pub/year=2016/month=12/type=green' IAM_ROLE 'arn:aws:iam::XXXXXXXXXXXX:role/mySpectrumRole' FORMAT AS PARQUET;
+	````
+
+	````
+	INSERT INTO workshop_das.taxi_current SELECT *, DATE_PART(year,pickup_datetime), DATE_PART(month,pickup_datetime), 'green' FROM workshop_das.taxi_loader;
+	
+	TRUNCATE workshop_das.taxi_loader;
+
+	````
+
+	- Similarly, start Yellow loop.
+
+### Redshift Spectrum can, of course, also be used to populate the table(s).
+
+````
+INSERT INTO  workshop_das.taxi_201601    SELECT * FROM ant321.NYTaxiRides WHERE year = 2016 AND month IN (2,3); /* Need to complete the first quarter of 2016.*/
+CREATE TABLE workshop_das.taxi_201602 AS SELECT * FROM ant321.NYTaxiRides WHERE year = 2016 AND month IN (4,5,6);
+CREATE TABLE workshop_das.taxi_201603 AS SELECT * FROM ant321.NYTaxiRides WHERE year = 2016 AND month IN (7,8,9);
+CREATE TABLE workshop_das.taxi_201604 AS SELECT * FROM ant321.NYTaxiRides WHERE year = 2016 AND month IN (10,11,12);
+
+
+````
+
+### Adjust your Redshift Spectrum table to exclude the Q4 2015 data
+
+````
+WITH generate_smallint_series AS (select row_number() over () as n from workshop_das.green_201601_csv limit 65536)
+, part_years AS (select n AS year_num from generate_smallint_series where n between 2015 and 2016)
+, part_months AS (select n AS month_num from generate_smallint_series where n between 1 and 12)
+, taxi_companies AS (SELECT 'fhv' taxi_vendor UNION ALL SELECT 'green' UNION ALL SELECT 'yellow')
+
+SELECT 'ALTER TABLE ant321.NYTaxiRides DROP PARTITION(year=' || year_num || ', month=' || month_num || ', type=\'' || taxi_vendor || '\');'
+FROM part_years, part_months, taxi_companies WHERE year_num = 2016 or (year_num = 2015 and month_num IN (10,11,12)) ORDER BY year_num, month_num;
+
+Or
+
+ALTER TABLE ant321.NYTaxiRides DROP PARTITION(year=2015, month=10, type='fhv');
+ALTER TABLE ant321.NYTaxiRides DROP PARTITION(year=2015, month=10, type='yellow');
+ALTER TABLE ant321.NYTaxiRides DROP PARTITION(year=2015, month=10, type='green');
+ALTER TABLE ant321.NYTaxiRides DROP PARTITION(year=2015, month=11, type='yellow');
+ALTER TABLE ant321.NYTaxiRides DROP PARTITION(year=2015, month=11, type='fhv');
+ALTER TABLE ant321.NYTaxiRides DROP PARTITION(year=2015, month=11, type='green');
+ALTER TABLE ant321.NYTaxiRides DROP PARTITION(year=2015, month=12, type='yellow');
+ALTER TABLE ant321.NYTaxiRides DROP PARTITION(year=2015, month=12, type='fhv');
+ALTER TABLE ant321.NYTaxiRides DROP PARTITION(year=2015, month=12, type='green');
+ALTER TABLE ant321.NYTaxiRides DROP PARTITION(year=2016, month=1, type='yellow');
+ALTER TABLE ant321.NYTaxiRides DROP PARTITION(year=2016, month=1, type='fhv');
+ALTER TABLE ant321.NYTaxiRides DROP PARTITION(year=2016, month=1, type='green');
+ALTER TABLE ant321.NYTaxiRides DROP PARTITION(year=2016, month=2, type='yellow');
+ALTER TABLE ant321.NYTaxiRides DROP PARTITION(year=2016, month=2, type='fhv');
+ALTER TABLE ant321.NYTaxiRides DROP PARTITION(year=2016, month=2, type='green');
+ALTER TABLE ant321.NYTaxiRides DROP PARTITION(year=2016, month=3, type='yellow');
+ALTER TABLE ant321.NYTaxiRides DROP PARTITION(year=2016, month=3, type='fhv');
+ALTER TABLE ant321.NYTaxiRides DROP PARTITION(year=2016, month=3, type='green');
+ALTER TABLE ant321.NYTaxiRides DROP PARTITION(year=2016, month=4, type='yellow');
+ALTER TABLE ant321.NYTaxiRides DROP PARTITION(year=2016, month=4, type='fhv');
+ALTER TABLE ant321.NYTaxiRides DROP PARTITION(year=2016, month=4, type='green');
+ALTER TABLE ant321.NYTaxiRides DROP PARTITION(year=2016, month=5, type='yellow');
+ALTER TABLE ant321.NYTaxiRides DROP PARTITION(year=2016, month=5, type='fhv');
+ALTER TABLE ant321.NYTaxiRides DROP PARTITION(year=2016, month=5, type='green');
+ALTER TABLE ant321.NYTaxiRides DROP PARTITION(year=2016, month=6, type='yellow');
+ALTER TABLE ant321.NYTaxiRides DROP PARTITION(year=2016, month=6, type='fhv');
+ALTER TABLE ant321.NYTaxiRides DROP PARTITION(year=2016, month=6, type='green');
+ALTER TABLE ant321.NYTaxiRides DROP PARTITION(year=2016, month=7, type='yellow');
+ALTER TABLE ant321.NYTaxiRides DROP PARTITION(year=2016, month=7, type='fhv');
+ALTER TABLE ant321.NYTaxiRides DROP PARTITION(year=2016, month=7, type='green');
+ALTER TABLE ant321.NYTaxiRides DROP PARTITION(year=2016, month=8, type='yellow');
+ALTER TABLE ant321.NYTaxiRides DROP PARTITION(year=2016, month=8, type='fhv');
+ALTER TABLE ant321.NYTaxiRides DROP PARTITION(year=2016, month=8, type='green');
+ALTER TABLE ant321.NYTaxiRides DROP PARTITION(year=2016, month=9, type='yellow');
+ALTER TABLE ant321.NYTaxiRides DROP PARTITION(year=2016, month=9, type='fhv');
+ALTER TABLE ant321.NYTaxiRides DROP PARTITION(year=2016, month=9, type='green');
+ALTER TABLE ant321.NYTaxiRides DROP PARTITION(year=2016, month=10, type='yellow');
+ALTER TABLE ant321.NYTaxiRides DROP PARTITION(year=2016, month=10, type='fhv');
+ALTER TABLE ant321.NYTaxiRides DROP PARTITION(year=2016, month=10, type='green');
+ALTER TABLE ant321.NYTaxiRides DROP PARTITION(year=2016, month=11, type='yellow');
+ALTER TABLE ant321.NYTaxiRides DROP PARTITION(year=2016, month=11, type='fhv');
+ALTER TABLE ant321.NYTaxiRides DROP PARTITION(year=2016, month=11, type='green');
+ALTER TABLE ant321.NYTaxiRides DROP PARTITION(year=2016, month=12, type='yellow');
+ALTER TABLE ant321.NYTaxiRides DROP PARTITION(year=2016, month=12, type='fhv');
+ALTER TABLE ant321.NYTaxiRides DROP PARTITION(year=2016, month=12, type='green');
+
+````
+
+* Now, regardless of method, there’s a view covering the trailing 5 quarters in Redshift DAS, and all of time on Redshift Spectrum, completely transparent to users of the view. What would be the steps to “age-off” the Q4 2015 data?
+* Put a copy of the data from Redshift DAS table to S3. Listen closely this week for a possible announcement around this step! What would be the command(s)?
+	* UNLOAD to Parquet.
+* Extend the Redshift Spectrum table to cover the Q4 2015 data with Redshift Spectrum.
+	* ADD Partition.
+* Remove the data from the Redshift DAS table:
+	* Either DELETE or DROP TABLE (depending on the implementation).
+
+**You have already done all of the steps in previous scenarios for this workshop. You have the toolset in your mind to do this!
+**
