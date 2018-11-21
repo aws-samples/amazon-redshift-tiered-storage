@@ -776,3 +776,9 @@ ALTER TABLE ant321.NYTaxiRides DROP PARTITION(year=2016, month=12, type='green')
 
 **You have already done all of the steps in previous scenarios for this workshop. You have the toolset in your mind to do this!
 **
+
+## Important Reminder: Please go ahead and delete your Redshift Cluster at the end of this workshop. For a quick how-to on that:
+
+```python
+https://docs.aws.amazon.com/redshift/latest/mgmt/managing-clusters-console.html#delete-cluster
+```
