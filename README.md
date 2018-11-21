@@ -55,7 +55,9 @@ https://docs.aws.amazon.com/redshift/latest/dg/c-getting-started-using-spectrum-
 
 <details><summary>How-to Screenshot</summary>
 <p>
+
 ![GitHub Logo](/images/redshift_launch.png)
+
 </p>
 </details>
 
@@ -168,7 +170,7 @@ VendorID,lpep_pickup_datetime,Lpep_dropoff_datetime,Store_and_fwd_flag,RateCodeI
 	<details><summary>Hint</summary>
 	<p>
 	
-	````
+	```python
 	CREATE SCHEMA workshop_das;
 
 	CREATE TABLE workshop_das.green_201601_csv
@@ -197,7 +199,7 @@ VendorID,lpep_pickup_datetime,Lpep_dropoff_datetime,Store_and_fwd_flag,RateCodeI
 	)
 	DISTSTYLE EVEN SORTKEY (passenger_count,pickup_datetime);
 
-	````
+	```
 	</p>
 	</details>
 
@@ -209,7 +211,7 @@ Build your copy command to copy the data from Amazon S3. This dataset has the nu
 
 s3://us-west-2.serverless-analytics/NYC-Pub/green/green_tripdata_2016-01.csv
 
-````
+```
 
 <details><summary>Hint</summary>
 <p>
@@ -405,9 +407,10 @@ Create a view that covers both the January, 2016 Green company DAS table with th
 <details><summary>Hint</summary>
 <p>
 
+```python
 
-```
 CREATE TABLE workshop_das.taxi_201601 AS SELECT * FROM ant321.NYTaxiRides WHERE year = 2016 AND month = 1 AND type = 'green';
+
 ```
 
 </p>
@@ -419,14 +422,14 @@ Note: What about column compression/encoding? Remember that on a CTAS, Amazon Re
 * Columns that are defined as BOOLEAN, REAL, or DOUBLE PRECISION data types are assigned RAW compression.
 * All other columns are assigned LZO compression.
 
-```
+```python
+
 https://docs.aws.amazon.com/redshift/latest/dg/r_CTAS_usage_notes.html
 
 ```
 Here's the ANALYZE COMPRESSION output in case you want to use it:
 
 ![GitHub Logo](/images/analyze_compression.png)
-
 
 ### Complete populating the table 
 
@@ -445,6 +448,7 @@ INSERT INTO workshop_das.taxi_201601 (SELECT * FROM ant321.NYTaxiRides WHERE yea
 </details>
 
 ### Create a new Spectrum table 
+
 Create a new Spectrum table **ant321.NYTaxiRides** (or simply drop the January, 2016 partitions).
 
 <details><summary>Hint</summary>
@@ -485,9 +489,11 @@ WITH NO SCHEMA BINDING
 - Note the filters being applied either at the partition or file levels in the Spectrum portion of the query (versus the Redshift DAS section).
 - If you actually run the query (and not just generate the explain plan), does the runtime surprise you? Why or why not?
 
-<pre><code>
+```python
+
 EXPLAIN SELECT year, month, type, COUNT(*) FROM ant321_view_NYTaxiRides WHERE year = 2016 AND month IN (1) AND passenger_count = 4 GROUP BY 1,2,3 ORDER BY 1,2,3;
-</code></pre>
+
+```
 
 <pre><code>
 QUERY PLAN
@@ -609,31 +615,31 @@ XN Merge  (cost=1000075000042.52..1000075000042.52 rows=1 width=30)
 
 * How about something like this:
 
-	<pre><code>
-	CREATE OR REPLACE VIEW ant321_view_NYTaxiRides AS
-   SELECT * FROM workshop_das.taxi_201504 <b>Note how these are business quarters</b>
+<pre><code>
+CREATE OR REPLACE VIEW ant321_view_NYTaxiRides AS
+SELECT * FROM workshop_das.taxi_201504 <b>Note how these are business quarters</b>
 UNION ALL
-  SELECT * FROM workshop_das.taxi_201601
+SELECT * FROM workshop_das.taxi_201601
 UNION ALL
-  SELECT * FROM workshop_das.taxi_201602
+SELECT * FROM workshop_das.taxi_201602
 UNION ALL
-  SELECT * FROM workshop_das.taxi_201603
+SELECT * FROM workshop_das.taxi_201603
 UNION ALL
-  SELECT * FROM workshop_das.taxi_201604
+SELECT * FROM workshop_das.taxi_201604
 UNION ALL
-  SELECT * FROM ant321.NYTaxiRides
+SELECT * FROM ant321.NYTaxiRides
 WITH NO SCHEMA BINDING;
-	</code></pre>
+</code></pre>
 	
 * Or something like this? Bulk DELETE-s in Redshift are actually quite fast (with one-time single-digit minute time to VACUUM), so this is also a valid configuration as well:
 
-	<pre><code>
-	CREATE OR REPLACE VIEW ant321_view_NYTaxiRides AS
-   SELECT * FROM workshop_das.taxi_current
+<pre><code>
+CREATE OR REPLACE VIEW ant321_view_NYTaxiRides AS
+SELECT * FROM workshop_das.taxi_current
 UNION ALL
-  SELECT * FROM ant321.NYTaxiRides
+SELECT * FROM ant321.NYTaxiRides
 WITH NO SCHEMA BINDING;
-	</code></pre>
+</code></pre>
 	
 * Don’t forget a quick ANALYZE and VACUUM after completing either version.
 
@@ -643,17 +649,19 @@ WITH NO SCHEMA BINDING;
 
 * We’re going to show how to work with the scenario where this pattern wasn’t followed. Use the single table option for this example
 	
-	````
+	```python
+
 	CREATE TABLE workshop_das.taxi_current DISTSTYLE EVEN SORTKEY(year, month, type) AS SELECT * FROM ant321.NYTaxiRides WHERE 1 = 0;
 
-	````
+	```
 
 * And, create a helper table that doesn't include the partition columns from the Redshift Spectrum table.
 
-	````
+	```python
+
 	CREATE TABLE workshop_das.taxi_loader AS SELECT vendorid, pickup_datetime, dropoff_datetime, ratecode, passenger_count, trip_distance, fare_amount, total_amount, payment_type FROM workshop_das.taxi_current WHERE 1 = 0;
 
-	````
+	```
 
 ### Parquet copy continued
 
@@ -661,11 +669,11 @@ WITH NO SCHEMA BINDING;
 	- Start Green loop.
 	- Q4 2015.
 
-	<pre><code>	
-	COPY workshop_das.taxi_loader FROM 's3://us-west-2.serverless-analytics/canonical/NY-Pub/year=2015/month=10/type=green' IAM_ROLE 'arn:aws:iam::XXXXXXXXXXXX:role/mySpectrumRole' FORMAT AS PARQUET;
+<pre><code>	
+COPY workshop_das.taxi_loader FROM 's3://us-west-2.serverless-analytics/canonical/NY-Pub/year=2015/month=10/type=green' IAM_ROLE 'arn:aws:iam::XXXXXXXXXXXX:role/mySpectrumRole' FORMAT AS PARQUET;
 COPY workshop_das.taxi_loader FROM 's3://us-west-2.serverless-analytics/canonical/NY-Pub/year=2015/month=11/type=green' IAM_ROLE 'arn:aws:iam::XXXXXXXXXXXX:role/mySpectrumRole' FORMAT AS PARQUET;
 COPY workshop_das.taxi_loader FROM 's3://us-west-2.serverless-analytics/canonical/NY-Pub/year=2015/month=12/type=green' IAM_ROLE 'arn:aws:iam::XXXXXXXXXXXX:role/mySpectrumRole' FORMAT AS PARQUET;
--- All 2016:
+<b>-- All 2016:</b>
 COPY workshop_das.taxi_loader FROM 's3://us-west-2.serverless-analytics/canonical/NY-Pub/year=2016/month=1/type=green' IAM_ROLE 'arn:aws:iam::XXXXXXXXXXXX:role/mySpectrumRole' FORMAT AS PARQUET;
 COPY workshop_das.taxi_loader FROM 's3://us-west-2.serverless-analytics/canonical/NY-Pub/year=2016/month=2/type=green' IAM_ROLE 'arn:aws:iam::XXXXXXXXXXXX:role/mySpectrumRole' FORMAT AS PARQUET;
 COPY workshop_das.taxi_loader FROM 's3://us-west-2.serverless-analytics/canonical/NY-Pub/year=2016/month=3/type=green' IAM_ROLE 'arn:aws:iam::XXXXXXXXXXXX:role/mySpectrumRole' FORMAT AS PARQUET;
@@ -678,13 +686,13 @@ COPY workshop_das.taxi_loader FROM 's3://us-west-2.serverless-analytics/canonica
 COPY workshop_das.taxi_loader FROM 's3://us-west-2.serverless-analytics/canonical/NY-Pub/year=2016/month=10/type=green' IAM_ROLE 'arn:aws:iam::XXXXXXXXXXXX:role/mySpectrumRole' FORMAT AS PARQUET;
 COPY workshop_das.taxi_loader FROM 's3://us-west-2.serverless-analytics/canonical/NY-Pub/year=2016/month=11/type=green' IAM_ROLE 'arn:aws:iam::XXXXXXXXXXXX:role/mySpectrumRole' FORMAT AS PARQUET;
 COPY workshop_das.taxi_loader FROM 's3://us-west-2.serverless-analytics/canonical/NY-Pub/year=2016/month=12/type=green' IAM_ROLE 'arn:aws:iam::XXXXXXXXXXXX:role/mySpectrumRole' FORMAT AS PARQUET;
-	</code></pre>
+</code></pre>
 
-	<pre><code>
-	INSERT INTO workshop_das.taxi_current SELECT *, DATE_PART(year,pickup_datetime), DATE_PART(month,pickup_datetime), 'green' FROM workshop_das.taxi_loader;
-	
-	TRUNCATE workshop_das.taxi_loader;
-	</code></pre>
+<pre><code>
+INSERT INTO workshop_das.taxi_current SELECT *, DATE_PART(year,pickup_datetime), DATE_PART(month,pickup_datetime), 'green' FROM workshop_das.taxi_loader;
+
+TRUNCATE workshop_das.taxi_loader;
+</code></pre>
 
 - Similarly, start Yellow loop.
 
