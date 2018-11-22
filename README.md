@@ -376,6 +376,44 @@ https://docs.aws.amazon.com/redshift/latest/mgmt/workload-mgmt-config.html
 
 ```
 
+###  Multi-row insert in Redshift
+
+* Create a federal holidays table using the data in the attached spreadsheet. Populate your table using Redshift **multi-row insert** statement
+
+```python
+https://docs.aws.amazon.com/redshift/latest/dg/c_best-practices-multi-row-inserts.html
+```
+
+* Consider the distribution for this **dimension table**.
+* What does the output of ANALYZE COMPRESSION look like for this table? Why is that?
+
+<details><summary>Hint</summary>
+<p>
+
+```python
+CREATE TABLE federal_holidays ( holiday_date DATE, holiday_name VARCHAR(64) ) DISTSTYLE ALL;
+
+INSERT INTO federal_holidays VALUES ('01/01/2009', 'New Years Day'), ('01/19/2009', 'Martin Luther King Jr. Day'), ('02/16/2009', 'Presidents\' Day'), ('05/25/2009', 'Memorial Day'), ('07/03/2009', 'Independence Day'), ('09/07/2009', 'Labor Day'), ('10/12/2009', 'Columbus Day'), ('11/11/2009', 'Veterans Day'), ('11/26/2009', 'Thanksgiving'), ('11/27/2009', 'Day after Thanksgiving'), ('12/25/2009', 'Christmas Day'), ('01/01/2010', 'New Years Day'), ('01/18/2010', 'Martin Luther King Jr. Day'), ('02/15/2010', 'Presidents\' Day'), ('05/09/2010', 'Mother\'s Day'), ('05/31/2010', 'Memorial Day'), ('07/05/2010', 'Independence Day'), ('09/06/2010', 'Labor Day'), ('10/11/2010', 'Columbus Day'), ('11/11/2010', 'Veterans Day'), ('11/25/2010', 'Thanksgiving'), ('11/26/2010', 'Day after Thanksgiving'), ('12/24/2010', 'Christmas Day observed'), ('12/31/2010', 'New Years Day observed'), ('01/17/2011', 'Martin Luther King Jr. Day'), ('02/21/2011', 'Presidents\' Day'), ('04/15/2011', 'Emancipation Day'), ('05/08/2011', 'Mother\'s Day'), ('05/30/2011', 'Memorial Day'), ('06/19/2011', 'Father\'s Day'), ('07/04/2011', 'Independence Day'), ('09/05/2011', 'Labor Day'), ('10/10/2011', 'Columbus Day'), ('11/11/2011', 'Veterans Day'), ('11/24/2011', 'Thanksgiving'), ('11/25/2011', 'Day after Thanksgiving'), ('12/26/2011', 'Christmas Holiday'), ('01/02/2012', 'New Years Day observed'), ('01/16/2012', 'Martin Luther King Jr. Day'), ('02/20/2012', 'Presidents\' Day'), ('04/16/2012', 'Emancipation Day'), ('05/13/2012', 'Mother\'s Day'), ('05/28/2012', 'Memorial Day'), ('06/17/2012', 'Father\'s Day'), ('07/04/2012', 'Independence Day'), ('09/03/2012', 'Labor Day'), ('10/08/2012', 'Columbus Day'), ('11/12/2012', 'Veterans Day'), ('11/22/2012', 'Thanksgiving'), ('11/23/2012', 'Day after Thanksgiving'), ('01/01/2013', 'New Years Day'), ('01/21/2013', 'Martin Luther King Jr. Day'), ('02/18/2013', 'Presidents\' Day'), ('04/16/2013', 'Emancipation Day'), ('05/12/2013', 'Mother\'s Day'), ('05/27/2013', 'Memorial Day'), ('06/16/2013', 'Father\'s Day'), ('07/04/2013', 'Independence Day'), ('09/02/2013', 'Labor Day'), ('10/14/2013', 'Columbus Day'), ('11/11/2013', 'Veterans Day'), ('11/28/2013', 'Thanksgiving'), ('11/29/2013', 'Day after Thanksgiving'), ('12/25/2013', 'Christmas Day'), ('01/01/2014', 'New Years Day'), ('01/20/2014', 'Martin Luther King Jr. Day'), ('02/17/2014', 'Presidents\' Day'), ('04/16/2014', 'Emancipation Day'), ('05/11/2014', 'Mother\'s Day'), ('05/26/2014', 'Memorial Day'), ('06/15/2014', 'Father\'s Day'), ('07/04/2014', 'Independence Day'), ('09/01/2014', 'Labor Day'), ('10/13/2014', 'Columbus Day'), ('11/11/2014', 'Veterans Day'), ('11/27/2014', 'Thanksgiving'), ('11/28/2014', 'Day after Thanksgiving'), ('12/25/2014', 'Christmas Day'), ('12/26/2014', 'Day after Christmas'), ('01/01/2015', 'New Years Day'), ('01/19/2015', 'Martin Luther King Jr. Day'), ('02/16/2015', 'Presidents\' Day'), ('04/16/2015', 'Emancipation Day'), ('05/10/2015', 'Mother\'s Day'), ('05/25/2015', 'Memorial Day'), ('06/21/2015', 'Father\'s Day'), ('07/03/2015', 'Independence Day (observed)'), ('09/07/2015', 'Labor Day'), ('10/12/2015', 'Columbus Day'), ('11/11/2015', 'Veterans Day'), ('11/26/2015', 'Thanksgiving'), ('11/27/2015', 'Day after Thanksgiving'), ('12/25/2015', 'Christmas Day'), ('01/01/2016', 'New Years Day'), ('01/18/2016', 'Martin Luther King Jr. Day'), ('02/15/2016', 'Presidents\' Day'), ('04/15/2016', 'Emancipation Day'), ('05/08/2016', 'Mother\'s Day'), ('05/30/2016', 'Memorial Day'), ('06/19/2016', 'Father\'s Day'), ('07/04/2016', 'Independence Day'), ('09/05/2016', 'Labor Day'), ('10/10/2016', 'Columbus Day'), ('11/11/2016', 'Veterans Day'), ('11/24/2016', 'Thanksgiving'), ('11/25/2016', 'Day after Thanksgiving'), ('12/26/2016', 'Christmas Day observed');
+```
+
+</p>
+</details>
+
+* Write a query to report the Holiday, number of passengers for the holidays in 2011, number of passengers for the holidays in 2016, and the percentage change over the 5 years for Yellow taxi.
+
+<details><summary>Hint</summary>
+<p>
+
+
+```python
+WITH helper AS (SELECT fed.holiday_date, fed.holiday_name, type, COUNT(*) AS num_fares, SUM(passenger_count) AS num_passengersFROM ant321_view_NYTaxiRides nyc, federal_holidays fedWHERE year IN (2011,2016) AND month = 11 AND fed.holiday_date = TO_CHAR(pickup_datetime,'MM/DD/YYYY')::DATE AND type in ('yellow') GROUP BY 1,2,3)SELECT a.holiday_name, a.type, a.num_passengers AS p2011, b.num_passengers AS p2016, (-1 * (1 - (b.num_passengers::FLOAT / a.num_passengers::FLOAT))) AS perc_diffFROM helper a, helper b where a.holiday_name = b.holiday_name AND a.type = b.type AND a.holiday_date < '01/01/2015'::DATE AND b.holiday_date > '01/01/2015'::DATE;
+
+```
+
+</p>
+</details>
+
+
 ### [Advanced Topic] Debug a Parquet/Redshift Spectrum datatype mismatch
 
 1. Create a new Redshift Spectrum table, changing the datatype of column ‘trip_distance’ from FLOAT8 to FLOAT4.
