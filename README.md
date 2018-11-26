@@ -38,9 +38,11 @@ This sample code is made available under a modified MIT license. See the LICENSE
 	* Query historical data residing on S3.
 	* Plan for the future.
 
-## Account Login and Redshift Cluster Spin-up
-* Log into AWS using the provided placeholder credentials, then switch the us-west-2.
-* Create an IAM role to query S3 data, giving the role read-only access to all Amazon S3 buckets.
+## Account Login and Redshift Cluster Spin-u
+* Get a temporary account (slip of paper).
+* Log into AWS using the provided placeholder credentials, then switch to **us-west-2** region.
+* We are here to help, please don’t hesitate to ask for assistance!
+* Create an IAM role to query S3 data, giving the role read-only access to all Amazon S3 buckets. Make sure to choose **AmazonS3ReadOnlyAccess and AWSGlueConsoleFullAccess**
 
 ```python
 
@@ -51,7 +53,8 @@ https://docs.aws.amazon.com/redshift/latest/dg/c-getting-started-using-spectrum-
 * Use Redshift’s ‘Quick Create’ functionality (or “Classic”) to create a cluster and associate the IAM role with it.
 	* Please use **2 compute nodes of DC2.Large**, using a cluster identifier, and master user of your choice.
 	* **Do not pick an AZ**
-	* Update the Security Group to allow Redshift
+	* Update the Security Group to allow Redshift. Please do not allow access from 0.0.0.0, your cluster will be auto-deactivated. You can choose allow current IP/only this IP.
+	* Double-check you are in the **us-west-2 ** region
 
 <details><summary>How-to Screenshot</summary>
 <p>
